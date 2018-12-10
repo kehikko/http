@@ -36,7 +36,7 @@ function route_execute()
     if (isset($route['call']) && is_string($route['call'])) {
         try {
             $content = tool_call($route);
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             $code    = $e->getCode() < 100 ? 500 : $e->getCode();
             $success = false;
             $msg     = $e->getMessage();
@@ -48,6 +48,7 @@ function route_execute()
                     );
                 }
             }
+            log_err('{file}:{line}: route_execute() failed when calling {call}: {msg} ', ['call' => $route['call'], 'file' => $e->getFile(), 'line' => $e->getLine(), 'msg' => $e->getMessage()]);
         }
     } else if (isset($route['redirect']) && is_string($route['redirect'])) {
         if (strpos($route['redirect'], 'http://') === 0 || strpos($route['redirect'], 'https://') === 0) {
@@ -58,11 +59,26 @@ function route_execute()
             throw new Exception('internal redirect not implemented');
         }
     } else {
-        return false;
+        $code    = 404;
+        $success = false;
+        $msg     = 'Not found.';
     }
 
-    if ($content === null) {
-        return false;
+    if ($format == 'json') {
+        header('Content-Type: application/json');
+        $json = ['success' => $success, 'data' => $success ? $content : null];
+        if (!empty($msg)) {
+            $json['msg'] = $msg;
+        }
+        if (!empty($trace)) {
+            $json['trace'] = $trace;
+        }
+        $content = json_encode($json);
+    } else if (!$success) {
+        $content = '<h1>Error: ' . $code . '</h1><p>' . $msg . '</p>';
+    } else if (!is_string($content)) {
+        $code    = 500;
+        $content = '<h1>Error: ' . $code . '</h1><p>' . (empty($content) ? 'No content.' : 'Trying to render invalid content.') . '</p>';
     }
 
     http_response_code($code);
@@ -71,17 +87,7 @@ function route_execute()
             header($key . ': ' . $val);
         }
     }
-
-    if ($format == 'json') {
-        header('Content-Type: application/json');
-        echo json_encode(['success' => $success, 'msg' => $msg, 'data' => $success ? $content : null, 'trace' => $trace]);
-    } else if (!$success) {
-        echo $msg;
-    } else if (is_string($content)) {
-        echo $content;
-    } else {
-        return false;
-    }
+    echo $content;
 }
 
 function route_init(string $route_file = null)
