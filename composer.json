@@ -1,0 +1,15 @@
+{
+  "name": "kehikko/http",
+  "description": "Http request handling for kehikko framework",
+  "license": "MIT",
+  "authors": [{
+    "name": "Antti Partanen",
+    "email": "aehparta@iki.fi"
+  }],
+  "require": {
+    "php": ">=7.0.0"
+  },
+  "autoload": {
+    "files": ["route.php","render.php"]
+  }
+}
