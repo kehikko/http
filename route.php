@@ -48,9 +48,6 @@ function route_execute()
     if (isset($route['call']) && is_string($route['call'])) {
         try {
             $content = tool_call($route);
-            // if ($api) {
-            //     $content = route_api_parse($route, $content);
-            // }
         } catch (Throwable $e) {
             $code    = $e->getCode() < 100 ? 500 : $e->getCode();
             $success = false;
@@ -233,10 +230,13 @@ function route_match($pattern, $path)
     foreach ($pattern as $i => $part) {
         $static   = true;
         $optional = false;
+        $name     = null;
         if (substr($part, 0, 1) === '{' && substr($part, -1) === '}') {
             $static   = false;
             $optional = substr($part, 1, 1) === '*';
-            $part     = substr($part, $optional ? 2 : 1, -1);
+            $part     = explode('=', substr($part, $optional ? 2 : 1, -1), 2);
+            $name     = empty($part[0]) ? null : $part[0];
+            $part     = count($part) == 2 ? $part[1] : '';
         }
 
         /* if not enough parts */
@@ -256,13 +256,13 @@ function route_match($pattern, $path)
         $validations = explode(',', $part);
         $value       = $path[$i];
         foreach ($validations as $validate) {
-            if (strpos($validate, 'call=') === 0) {
+            if (strpos($validate, 'call:') === 0) {
                 try {
                     $value = tool_call(['call' => substr($validate, 5)], [$value]);
                 } catch (Exception $e) {
                     return false;
                 }
-            } else if (strpos($validate, 'object=') === 0) {
+            } else if (strpos($validate, 'object:') === 0) {
                 try {
                     $class = substr($validate, 7);
                     $value = new $class($value);
@@ -270,13 +270,22 @@ function route_match($pattern, $path)
                     return false;
                 }
             } else if ($validate === 'rest') {
-                $values['args'][] = implode(array_slice($path, $i), '/');
+                if ($name !== null) {
+                    $values['args'][$name] = implode(array_slice($path, $i), '/');
+                } else {
+                    $values['args'][] = implode(array_slice($path, $i), '/');
+                }
                 return $values;
             } else if (!tool_validate($validate, $value)) {
                 return false;
             }
         }
-        $values['args'][] = $value;
+
+        if ($name !== null) {
+            $values['args'][$name] = $value;
+        } else {
+            $values['args'][] = $value;
+        }
     }
 
     if (($i + 1) != count($path)) {
@@ -285,26 +294,6 @@ function route_match($pattern, $path)
     }
 
     return $values;
-}
-
-function route_api_parse($route, $content)
-{
-    if (!isset($route['values']) || !is_array($route['values'])) {
-        throw new Exception('api route not valid');
-    }
-
-    $data = [];
-    foreach ($content as $o) {
-        $sd = [];
-        foreach ($route['values'] as $key => $val) {
-            if (method_exists($o, 'get' . ucfirst($key))) {
-                $sd[$key] = $o->{'get' . ucfirst($key)}();
-            }
-        }
-        $data[] = $sd;
-    }
-
-    return $data;
 }
 
 function route_test_request_cmd($cmd, $args, $options)

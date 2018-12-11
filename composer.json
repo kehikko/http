@@ -10,6 +10,6 @@
     "php": ">=7.0.0"
   },
   "autoload": {
-    "files": ["route.php", "render.php", "http.php"]
+    "files": ["route.php", "render.php", "http.php", "api.php"]
   }
 }
