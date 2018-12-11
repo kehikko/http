@@ -4,6 +4,9 @@ function route()
 {
     $routes = route_init();
     $path   = explode('/', trim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/'));
+    if ($path[0] === '') {
+        $path = [];
+    }
     return route_find($routes['base'], $path, false);
 }
 
@@ -25,17 +28,26 @@ function route_execute()
     $success = true;
     $msg     = '';
     $trace   = [];
+    $api     = false;
 
+    /* check few options first */
     if (isset($route['options']['code']) && is_int($route['options']['code'])) {
         $code = intval($route['options']['code']);
     }
     if (isset($route['options']['format']) && is_string($route['options']['format'])) {
         $format = $route['options']['format'];
     }
+    if (isset($route['_api']) && $route['_api'] === true) {
+        $api = true;
+    }
 
+    /* resolve where to get data */
     if (isset($route['call']) && is_string($route['call'])) {
         try {
             $content = tool_call($route);
+            if ($api) {
+                $content = route_api_parse($route, $content);
+            }
         } catch (Throwable $e) {
             $code    = $e->getCode() < 100 ? 500 : $e->getCode();
             $success = false;
@@ -64,7 +76,8 @@ function route_execute()
         $msg     = 'Not found.';
     }
 
-    if ($format == 'json') {
+    /* respond */
+    if ($format == 'json' || $api) {
         header('Content-Type: application/json');
         $json = ['success' => $success, 'data' => $success ? $content : null];
         if (!empty($msg)) {
@@ -121,7 +134,25 @@ function route_init(string $route_file = null)
 
 function route_load(string $route_file)
 {
-    return tool_yaml_load([$route_file, dirname($route_file) . '/' . basename($route_file, '.yml') . '-local.yml']);
+    /* load normal routes */
+    $data = tool_yaml_load([$route_file]);
+    $data = array_merge($data, tool_yaml_load([dirname($route_file) . '/' . basename($route_file, '.yml') . '-local.yml']));
+
+    /* load api route files */
+    $data_api = tool_yaml_load([dirname($route_file) . '/' . basename($route_file, '.yml') . '-api.yml']);
+    $data_api = array_merge($data_api, tool_yaml_load([dirname($route_file) . '/' . basename($route_file, '.yml') . '-api-local.yml']));
+    /* mark all routes in files with "-api" postfix as api */
+    if (is_array($data_api)) {
+        foreach ($data_api as $key => $val) {
+            if (!is_array($val)) {
+                continue;
+            }
+            $data_api[$key]['_api'] = true;
+        }
+        $data = array_merge($data, $data_api);
+    }
+
+    return $data;
 }
 
 function route_find($routes, $path, $final)
@@ -133,7 +164,11 @@ function route_find($routes, $path, $final)
 
         /* try to match route */
         $pattern = explode('/', trim(parse_url($route['pattern'], PHP_URL_PATH), '/'));
-        $values  = route_match($pattern, $path);
+        if ($pattern[0] === '') {
+            $pattern = [];
+        }
+
+        $values = route_match($pattern, $path);
         if (!$values) {
             continue;
         }
@@ -160,6 +195,7 @@ function route_find($routes, $path, $final)
 
 function route_match($pattern, $path)
 {
+    $i      = -1;
     $values = ['args' => [], '_final' => true];
     foreach ($pattern as $i => $part) {
         $static   = true;
@@ -218,4 +254,24 @@ function route_match($pattern, $path)
     }
 
     return $values;
+}
+
+function route_api_parse($route, $content)
+{
+    if (!isset($route['values']) || !is_array($route['values'])) {
+        throw new Exception('api route not valid');
+    }
+
+    $data = [];
+    foreach ($content as $o) {
+        $sd = [];
+        foreach ($route['values'] as $key => $val) {
+            if (method_exists($o, 'get' . ucfirst($key))) {
+                $sd[$key] = $o->{'get' . ucfirst($key)}();
+            }
+        }
+        $data[] = $sd;
+    }
+
+    return $data;
 }
