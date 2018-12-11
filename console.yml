@@ -1,0 +1,10 @@
+commands:
+  route:test:request:
+    call: route_test_request_cmd
+    description: Execute router using given url and echo contents to console. Will not make an actual http-request, only runs router.
+    arguments:
+      method:
+        description: request method, example GET, OPTIONS or DELETE, can be any string really, converted to uppercase and set to $_SERVER['REQUEST_METHOD']
+      url:
+        description: "query only, example /login?x=1, set to $_SERVER['REQUEST_URI']"
+          

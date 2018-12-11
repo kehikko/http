@@ -22,32 +22,35 @@ function route_render()
 function route_execute()
 {
     $code    = 200;
-    $format  = 'html';
     $content = null;
     $route   = route();
     $success = true;
     $msg     = '';
     $trace   = [];
-    $api     = false;
 
-    /* check few options first */
-    if (isset($route['options']['code']) && is_int($route['options']['code'])) {
-        $code = intval($route['options']['code']);
+    /* set code if missing */
+    if (isset($route['code']) && is_int($route['code'])) {
+        $code = $route['code'];
     }
-    if (isset($route['options']['format']) && is_string($route['options']['format'])) {
-        $format = $route['options']['format'];
+    /* add empty headers array if not set */
+    if (!isset($route['headers']) || !is_array($route['headers'])) {
+        $route['headers'] = [];
     }
+    /* force format as json for api requests */
     if (isset($route['_api']) && $route['_api'] === true) {
-        $api = true;
+        $route['format'] = 'json';
+    } else if (!isset($route['format']) || !is_string($route['format'])) {
+        /* format missign, defaults to html */
+        $route['format'] = 'html';
     }
 
     /* resolve where to get data */
     if (isset($route['call']) && is_string($route['call'])) {
         try {
             $content = tool_call($route);
-            if ($api) {
-                $content = route_api_parse($route, $content);
-            }
+            // if ($api) {
+            //     $content = route_api_parse($route, $content);
+            // }
         } catch (Throwable $e) {
             $code    = $e->getCode() < 100 ? 500 : $e->getCode();
             $success = false;
@@ -60,8 +63,10 @@ function route_execute()
                     );
                 }
             }
-            log_err('{file}:{line}: route_execute() failed when calling {call}: {msg} ', ['call' => $route['call'], 'file' => $e->getFile(), 'line' => $e->getLine(), 'msg' => $e->getMessage()]);
+            log_err('{file}:{line}: route_execute() failed when calling {call}, request uri: "{uri}", error: {msg}', ['call' => $route['call'], 'file' => $e->getFile(), 'line' => $e->getLine(), 'msg' => $e->getMessage(), 'uri' => $_SERVER['REQUEST_URI']]);
         }
+    } else if (isset($route['content'])) {
+        $content = $route['content'];
     } else if (isset($route['redirect']) && is_string($route['redirect'])) {
         if (strpos($route['redirect'], 'http://') === 0 || strpos($route['redirect'], 'https://') === 0) {
             http_response_code($code >= 300 && $code < 400 ? $code : 302);
@@ -76,17 +81,19 @@ function route_execute()
         $msg     = 'Not found.';
     }
 
-    /* respond */
-    if ($format == 'json' || $api) {
-        header('Content-Type: application/json');
-        $json = ['success' => $success, 'data' => $success ? $content : null];
-        if (!empty($msg)) {
-            $json['msg'] = $msg;
+    /* modify content */
+    if ($route['format'] == 'json') {
+        $route['headers']['Content-Type'] = 'application/json';
+        if (!$success) {
+            $content = ['msg' => ''];
+            if (!empty($msg)) {
+                $content['msg'] = $msg;
+            }
+            if (!empty($trace)) {
+                $content['trace'] = $trace;
+            }
         }
-        if (!empty($trace)) {
-            $json['trace'] = $trace;
-        }
-        $content = json_encode($json);
+        $content = json_encode($content);
     } else if (!$success) {
         $content = '<h1>Error: ' . $code . '</h1><p>' . $msg . '</p>';
     } else if (!is_string($content)) {
@@ -94,13 +101,28 @@ function route_execute()
         $content = '<h1>Error: ' . $code . '</h1><p>' . (empty($content) ? 'No content.' : 'Trying to render invalid content.') . '</p>';
     }
 
-    http_response_code($code);
-    if (isset($route['options']['headers']) && is_array($route['options']['headers'])) {
-        foreach ($route['options']['headers'] as $key => $val) {
-            header($key . ': ' . $val);
+    /* set response code */
+    if (http_is()) {
+        http_response_code($code);
+    } else {
+        echo 'Response code: ' . $code . "\n";
+    }
+
+    /* add custom headers from route */
+    foreach ($route['headers'] as $key => $val) {
+        if (http_is()) {
+            header($key . ': ' . tr($val));
+        } else {
+            echo $key . ': ' . tr($val) . "\n";
         }
     }
-    echo $content;
+
+    /* print content */
+    if (http_is()) {
+        echo $content;
+    } else {
+        echo "\n" . $content . "\n";
+    }
 }
 
 function route_init(string $route_file = null)
@@ -152,6 +174,9 @@ function route_load(string $route_file)
         $data = array_merge($data, $data_api);
     }
 
+    /* reverse whole array, we want it this way */
+    $data = array_reverse($data);
+
     return $data;
 }
 
@@ -160,6 +185,11 @@ function route_find($routes, $path, $final)
     foreach ($routes as $name => $route) {
         if (!isset($route['pattern'])) {
             continue;
+        }
+        if (isset($route['method']) && (is_array($route['method']) || is_string($route['method']))) {
+            if (!http_using_method(is_array($route['method']) ? $route['method'] : [$route['method']])) {
+                continue;
+            }
         }
 
         /* try to match route */
@@ -176,21 +206,21 @@ function route_find($routes, $path, $final)
         /* this was a match, check what kind of match */
         $route = array_replace_recursive($route, $values);
         if ($route['_final']) {
-            if (isset($route['redirect']) || isset($route['call'])) {
+            if (isset($route['redirect']) || isset($route['call']) || isset($route['content'])) {
                 return $route;
             }
         } else if (!$final) {
             $subr = route_init();
             if (isset($subr['sub'][$name])) {
                 $route = route_find($subr['sub'][$name], $route['_path'], true);
-                if ($route) {
+                if (!empty($route)) {
                     return $route;
                 }
             }
         }
     }
 
-    return false;
+    return [];
 }
 
 function route_match($pattern, $path)
@@ -226,9 +256,6 @@ function route_match($pattern, $path)
             if (strpos($validate, 'call=') === 0) {
                 try {
                     $value = tool_call(['call' => substr($validate, 5)], [$value]);
-                    if ($value === false || $value === null) {
-                        return false;
-                    }
                 } catch (Exception $e) {
                     return false;
                 }
@@ -240,7 +267,8 @@ function route_match($pattern, $path)
                     return false;
                 }
             } else if ($validate === 'rest') {
-                /* todo */
+                $values['args'][] = implode(array_slice($path, $i), '/');
+                return $values;
             } else if (!tool_validate($validate, $value)) {
                 return false;
             }
@@ -274,4 +302,12 @@ function route_api_parse($route, $content)
     }
 
     return $data;
+}
+
+function route_test_request_cmd($cmd, $args, $options)
+{
+    $_SERVER['REQUEST_METHOD'] = strtoupper($args['method']);
+    $_SERVER['REQUEST_URI']    = $args['url'];
+    route_execute();
+    return true;
 }
