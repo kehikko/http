@@ -157,12 +157,15 @@ function route_init(string $route_file = null)
 function route_load(string $route_file)
 {
     /* load normal routes */
-    $data = tool_yaml_load([$route_file]);
-    $data = array_merge($data, tool_yaml_load([dirname($route_file) . '/' . basename($route_file, '.yml') . '-local.yml']));
+    $data       = tool_yaml_load([$route_file]);
+    $data_local = tool_yaml_load([dirname($route_file) . '/' . basename($route_file, '.yml') . '-local.yml']);
+    $data       = array_merge(array_reverse($data), array_reverse($data_local));
 
     /* load api route files */
-    $data_api = tool_yaml_load([dirname($route_file) . '/' . basename($route_file, '.yml') . '-api.yml']);
-    $data_api = array_merge($data_api, tool_yaml_load([dirname($route_file) . '/' . basename($route_file, '.yml') . '-api-local.yml']));
+    $data_api       = tool_yaml_load([dirname($route_file) . '/' . basename($route_file, '.yml') . '-api.yml']);
+    $data_api_local = tool_yaml_load([dirname($route_file) . '/' . basename($route_file, '.yml') . '-api-local.yml']);
+    $data_api       = array_merge(array_reverse($data_api), array_reverse($data_api_local));
+
     /* mark all routes in files with "-api" postfix as api */
     if (is_array($data_api)) {
         foreach ($data_api as $key => $val) {
