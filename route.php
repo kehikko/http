@@ -49,9 +49,16 @@ function route_execute()
         try {
             $content = tool_call($route);
         } catch (Throwable $e) {
-            $code    = $e->getCode() < 100 ? 500 : $e->getCode();
+            $code = $e->getCode();
+            /* if return code is outside http codes, this is an internal error */
+            if ($code < 100 || $code >= 600) {
+                $code = 500;
+                $msg  = cfg_debug() ? $e->getMessage() : 'Internal server error, see log for details.';
+            } else {
+                /* message should be already formatted so that it can be shown to user */
+                $msg = $e->getMessage();
+            }
             $success = false;
-            $msg     = $e->getMessage();
             if (cfg_debug()) {
                 foreach ($e->getTrace() as $n => $t) {
                     $trace[] = array(
@@ -60,7 +67,8 @@ function route_execute()
                     );
                 }
             }
-            log_err('{file}:{line}: route_execute() failed when calling {call}, request uri: "{uri}", error: {msg}', ['call' => $route['call'], 'file' => $e->getFile(), 'line' => $e->getLine(), 'msg' => $e->getMessage(), 'uri' => $_SERVER['REQUEST_URI']]);
+            /* write all internal errors to log */
+            log_if_err($code >= 500, '{file}:{line}: route_execute() failed when calling {call}, request uri: "{uri}", error: {msg}', ['call' => $route['call'], 'file' => $e->getFile(), 'line' => $e->getLine(), 'msg' => $e->getMessage(), 'uri' => $_SERVER['REQUEST_URI']]);
         }
     } else if (isset($route['content'])) {
         $content = $route['content'];
@@ -70,7 +78,9 @@ function route_execute()
             header('Location: ' . $route['redirect']);
             return true;
         } else {
-            throw new Exception('internal redirect not implemented');
+            $code    = 501;
+            $success = false;
+            $msg     = 'Internal redirect not implemented';
         }
     } else {
         $code    = 404;
@@ -225,27 +235,35 @@ function route_find($routes, $path, $final)
 
 function route_match($pattern, $path)
 {
-    $i      = -1;
-    $values = ['args' => [], '_final' => true];
+    $i              = -1;
+    $values         = ['args' => [], '_final' => true];
+    $after_optional = false;
+
     foreach ($pattern as $i => $part) {
         $static   = true;
         $optional = false;
         $name     = null;
         if (substr($part, 0, 1) === '{' && substr($part, -1) === '}') {
             $static   = false;
-            $optional = substr($part, 1, 1) === '*';
-            $part     = explode('=', substr($part, $optional ? 2 : 1, -1), 2);
-            $name     = empty($part[0]) ? null : $part[0];
-            $part     = count($part) == 2 ? $part[1] : '';
+            $subparts = explode('|', substr($part, 1, -1), 2);
+            if (count($subparts) == 2) {
+                $optional       = true;
+                $after_optional = true;
+                /* if path is missing for slug, use secondary option for it */
+                $part = isset($path[$i]) ? $subparts[0] : $subparts[1];
+            }
+            $part = explode('=', $part, 2);
+            $name = empty($part[0]) ? null : $part[0];
+            $part = count($part) == 2 ? $part[1] : '';
         }
 
         /* if not enough parts */
-        if (!isset($path[$i])) {
-            return $optional ? $values : false;
+        if (!$optional && !isset($path[$i])) {
+            return false;
         }
 
         /* check for static parts */
-        if ($static) {
+        if ($static && !$after_optional) {
             if ($path[$i] !== $part) {
                 return false;
             }
@@ -254,18 +272,29 @@ function route_match($pattern, $path)
 
         /* more complex slug parsing */
         $validations = explode(',', $part);
-        $value       = $path[$i];
+        $value       = isset($path[$i]) ? $path[$i] : null;
         foreach ($validations as $validate) {
-            if (strpos($validate, 'call:') === 0) {
+            if ($validate == '') {
+                /* empty string, not really and invalid thing, just skip */
+                continue;
+            } else if (strpos($validate, 'call:') === 0) {
                 try {
-                    $value = tool_call(['call' => substr($validate, 5)], [$value]);
+                    if ($value !== null) {
+                        $value = tool_call(['call' => substr($validate, 5)], [$value]);
+                    } else {
+                        $value = tool_call(['call' => substr($validate, 5)]);
+                    }
                 } catch (Exception $e) {
                     return false;
                 }
             } else if (strpos($validate, 'object:') === 0) {
                 try {
                     $class = substr($validate, 7);
-                    $value = new $class($value);
+                    if ($value !== null) {
+                        $value = new $class($value);
+                    } else {
+                        $value = new $class();
+                    }
                 } catch (Exception $e) {
                     return false;
                 }
@@ -288,7 +317,7 @@ function route_match($pattern, $path)
         }
     }
 
-    if (($i + 1) != count($path)) {
+    if (($i + 1) < count($path)) {
         $values['_final'] = false;
         $values['_path']  = array_slice($path, $i + 1);
     }
