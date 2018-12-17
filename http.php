@@ -5,14 +5,6 @@ function http_render()
     return 'moi';
 }
 
-function http_is()
-{
-    if (isset($_SERVER['REMOTE_ADDR'])) {
-        return true;
-    }
-    return false;
-}
-
 function http_method()
 {
     if (!isset($_SERVER['REQUEST_METHOD'])) {

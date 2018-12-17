@@ -109,7 +109,7 @@ function route_execute()
     }
 
     /* set response code */
-    if (http_is()) {
+    if (tool_is_http_request()) {
         http_response_code($code);
     } else {
         echo 'Response code: ' . $code . "\n";
@@ -117,7 +117,7 @@ function route_execute()
 
     /* add custom headers from route */
     foreach ($route['headers'] as $key => $val) {
-        if (http_is()) {
+        if (tool_is_http_request()) {
             header($key . ': ' . tr($val));
         } else {
             echo $key . ': ' . tr($val) . "\n";
@@ -125,7 +125,7 @@ function route_execute()
     }
 
     /* print content */
-    if (http_is()) {
+    if (tool_is_http_request()) {
         echo $content;
     } else {
         echo "\n" . $content . "\n";
