@@ -287,17 +287,6 @@ function route_match($pattern, $path)
                 } catch (Exception $e) {
                     return false;
                 }
-            } else if (strpos($validate, 'object:') === 0) {
-                try {
-                    $class = substr($validate, 7);
-                    if ($value !== null) {
-                        $value = new $class($value);
-                    } else {
-                        $value = new $class();
-                    }
-                } catch (Exception $e) {
-                    return false;
-                }
             } else if ($validate === 'rest') {
                 if ($name !== null) {
                     $values['args'][$name] = implode(array_slice($path, $i), '/');
