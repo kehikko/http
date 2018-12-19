@@ -24,7 +24,7 @@ function api_validate_nodes(array $nodes, $data, array $path, $mode)
     foreach ($nodes as $name => $node) {
         array_push($path, $name);
         if (!is_array($node)) {
-            log_err('Invalid api description, key: {0}, type: {1}, type should be array', [implode($path, ':'), gettype($node)]);
+            log_error('Invalid api description, key: {0}, type: {1}, type should be array', [implode($path, ':'), gettype($node)]);
         } else if (isset($node['type']) && is_string($node['type'])) {
             api_validate_node($name, $node, $data, $path, $mode, $return_data);
         } else if (!isset($data[$name]) || !is_array($data[$name])) {
@@ -57,10 +57,10 @@ function api_validate_node(string $name, array $node, $data, array $path, $mode,
             try {
                 $extra = new DateTimeZone(tr($node['timezone']));
             } catch (Throwable $e) {
-                log_err('Invalid api description, timezone is not valid for key: {0}, error: {1}', [implode($path, ':'), $e->getMessage()]);
+                log_error('Invalid api description, timezone is not valid for key: {0}, error: {1}', [implode($path, ':'), $e->getMessage()]);
             }
         } else {
-            log_err('Invalid api description, timezone is not a string for key: ' . implode($path, ':'));
+            log_error('Invalid api description, timezone is not a string for key: ' . implode($path, ':'));
         }
     }
 
@@ -76,7 +76,7 @@ function api_validate_node(string $name, array $node, $data, array $path, $mode,
         $min = isset($node['min']['call']) ? tool_call($node['min'], $args) : $node['min'];
         $min = is_string($min) && !is_numeric($min) ? tr($min) : $min;
         if (!is_numeric($min)) {
-            log_err('Invalid api description, guard "min" should be a number or number returned by call, it is not for key: {0}, it is type: {1}', [implode($path, ':'), gettype($min)]);
+            log_error('Invalid api description, guard "min" should be a number or number returned by call, it is not for key: {0}, it is type: {1}', [implode($path, ':'), gettype($min)]);
         } else if (!is_numeric($value) || $value < $min) {
             http_e400('Invalid number value (under minimum) for key: ' . implode($path, ':'));
         }
@@ -85,7 +85,7 @@ function api_validate_node(string $name, array $node, $data, array $path, $mode,
         $max = isset($node['max']['call']) ? tool_call($node['max'], $args) : $node['max'];
         $max = is_string($max) && !is_numeric($max) ? tr($max) : $max;
         if (!is_numeric($max)) {
-            log_err('Invalid api description, guard "max" should be a number or number returned by call, it is not for key: {0}, it is type: {1}', [implode($path, ':'), gettype($max)]);
+            log_error('Invalid api description, guard "max" should be a number or number returned by call, it is not for key: {0}, it is type: {1}', [implode($path, ':'), gettype($max)]);
         } else if (!is_numeric($value) || $value > $max) {
             http_e400('Invalid number value (over maximum) for key: ' . implode($path, ':'));
         }
@@ -94,7 +94,7 @@ function api_validate_node(string $name, array $node, $data, array $path, $mode,
     if (isset($node['accept'])) {
         $accept = isset($node['accept']['call']) ? tool_call($node['accept'], $args) : $node['accept'];
         if (!is_array($accept)) {
-            log_err('Invalid api description, guard "accept" should be an array or array returned by call, it is not for key: {0}, it is type: {1}', [implode($path, ':'), gettype($accept)]);
+            log_error('Invalid api description, guard "accept" should be an array or array returned by call, it is not for key: {0}, it is type: {1}', [implode($path, ':'), gettype($accept)]);
         } else if (!in_array($value, $accept, true)) {
             http_e400('Invalid value (not in accepted values) for key: ' . implode($path, ':'));
         }

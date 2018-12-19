@@ -25,7 +25,7 @@ function http_exception(int $code, string $message, array $context = [])
     $message = tr($message, $context);
     /* always log >= 500 exceptions, they are internal errors */
     if ($code >= 500) {
-        log_err('internal server error with http code ' . $code . ', message: ' . $message);
+        log_error('internal server error with http code ' . $code . ', message: ' . $message);
     } else {
         log_verbose('http exception with code ' . $code . ', message: ' . $message);
     }
