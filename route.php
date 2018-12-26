@@ -68,7 +68,7 @@ function route_execute()
                 }
             }
             /* write all internal errors to log */
-            log_if_err($code >= 500, '{file}:{line}: route_execute() failed when calling {call}, request uri: "{uri}", error: {msg}', ['call' => $route['call'], 'file' => $e->getFile(), 'line' => $e->getLine(), 'msg' => $e->getMessage(), 'uri' => $_SERVER['REQUEST_URI']]);
+            log_if_error($code >= 500, '{file}:{line}: route_execute() failed when calling {call}, request uri: "{uri}", error: {msg}', ['call' => $route['call'], 'file' => $e->getFile(), 'line' => $e->getLine(), 'msg' => $e->getMessage(), 'uri' => $_SERVER['REQUEST_URI']]);
         }
     } else if (isset($route['content'])) {
         $content = $route['content'];
