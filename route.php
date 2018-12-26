@@ -244,8 +244,9 @@ function route_match($pattern, $path)
         $optional = false;
         $name     = null;
         if (substr($part, 0, 1) === '{' && substr($part, -1) === '}') {
+            $part     = substr($part, 1, -1);
             $static   = false;
-            $subparts = explode('|', substr($part, 1, -1), 2);
+            $subparts = explode('|', $part, 2);
             if (count($subparts) == 2) {
                 $optional       = true;
                 $after_optional = true;
