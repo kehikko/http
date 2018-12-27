@@ -1,14 +1,9 @@
 <?php
 
-function http_render()
-{
-    return 'moi';
-}
-
 function http_method()
 {
     if (!isset($_SERVER['REQUEST_METHOD'])) {
-        log_debug('trying to get http method when http request not made, i.e. when using console, returning "none" as method');
+        log_debug('Trying to get http method when http request not made, i.e. when using console, returning "none" as method');
         return 'none';
     }
     return strtolower($_SERVER['REQUEST_METHOD']);
@@ -25,12 +20,30 @@ function http_exception(int $code, string $message, array $context = [])
     $message = tr($message, $context);
     /* always log >= 500 exceptions, they are internal errors */
     if ($code >= 500) {
-        log_error('internal server error with http code ' . $code . ', message: ' . $message);
+        log_error('Internal server error with http code ' . $code . ', message: ' . $message);
     } else {
-        log_verbose('http exception with code ' . $code . ', message: ' . $message);
+        log_verbose('Http exception with code ' . $code . ', message: ' . $message);
     }
     /* throw exception */
     throw new Exception($message, $code);
+}
+
+function http_request_payload()
+{
+    if (!http_using_method(['put', 'post', 'patch'])) {
+        log_notice('Reading request payload when http method does not include such, method used: ' . http_method());
+    }
+    $data = file_get_contents('php://input');
+    return $data !== false ? $data : null;
+}
+
+function http_request_payload_json()
+{
+    $data = http_request_payload();
+    if (!is_string($data)) {
+        return null;
+    }
+    return json_decode($data, true);
 }
 
 /**
