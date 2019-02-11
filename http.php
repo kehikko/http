@@ -14,20 +14,6 @@ function http_using_method(array $methods)
     return in_array(http_method(), $methods) ? true : false;
 }
 
-function http_exception(int $code, string $message, array $context = [])
-{
-    /* translate possible references */
-    $message = tr($message, $context);
-    /* always log >= 500 exceptions, they are internal errors */
-    if ($code >= 500) {
-        log_error('Internal server error with http code ' . $code . ', message: ' . $message);
-    } else {
-        log_verbose('Http exception with code ' . $code . ', message: ' . $message);
-    }
-    /* throw exception */
-    throw new Exception($message, $code);
-}
-
 function http_request_payload()
 {
     if (!http_using_method(['put', 'post', 'patch'])) {
@@ -44,6 +30,20 @@ function http_request_payload_json()
         return null;
     }
     return json_decode($data, true);
+}
+
+function http_exception(int $code, string $message, array $context = [])
+{
+    /* translate possible references */
+    $message = tr($message, $context);
+    /* always log >= 500 exceptions, they are internal errors */
+    if ($code >= 500) {
+        log_error('Internal server error with http code ' . $code . ', message: ' . $message);
+    } else {
+        log_verbose('Http exception with code ' . $code . ', message: ' . $message);
+    }
+    /* throw exception */
+    throw new Exception($message, $code);
 }
 
 /**
