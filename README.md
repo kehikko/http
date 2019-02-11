@@ -2,4 +2,4 @@
 
 Http request handling for kehikko framework.
 
-**See:** [http://kehikko.github.io](Documentation)
+**See:** [Documentation](http://kehikko.github.io)
