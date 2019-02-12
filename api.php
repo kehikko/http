@@ -3,7 +3,7 @@
 function api_validate(array $cfg, $data)
 {
     if (!isset($cfg['api']) || !is_array($cfg['api'])) {
-        return false;
+        http_e500('Invalid api validate request, api description is missing for given route');
     }
 
     $mode = null;
