@@ -184,7 +184,7 @@ function route_load(string $route_file)
         $data = array_merge($data, $data_api);
     }
 
-    /* reverse whole array, we want it this way */
+    /* reverse whole array, we want it this way for routes to match in the correct order */
     $data = array_reverse($data);
 
     return $data;

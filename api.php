@@ -2,7 +2,7 @@
 
 function api_validate(array $cfg, $data)
 {
-    if (!isset($cfg['values']) || !is_array($cfg['values'])) {
+    if (!isset($cfg['api']) || !is_array($cfg['api'])) {
         return false;
     }
 
@@ -15,7 +15,7 @@ function api_validate(array $cfg, $data)
         http_e500('Invalid api validate request, http method used: ' . http_method() . ', should be one of: post, put, patch');
     }
 
-    return api_validate_nodes($cfg['values'], $data, [], $mode);
+    return api_validate_nodes($cfg['api'], $data, [], $mode);
 }
 
 function api_validate_nodes(array $nodes, $data, array $path, $mode)
