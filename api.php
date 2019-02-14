@@ -66,7 +66,7 @@ function api_validate_node(string $name, array $node, $data, array $path, $mode,
 
     /* validate data */
     $value = $data[$name];
-    if (!tool_validate($node['type'], $value, true, $extra)) {
+    if (!validate($node['type'], $value, true, $extra)) {
         http_e400('Invalid value for key: ' . implode($path, ':'));
     }
     /* create args for possible calls */

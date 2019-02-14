@@ -295,7 +295,7 @@ function route_match($pattern, $path)
                     $values['args'][] = implode(array_slice($path, $i), '/');
                 }
                 return $values;
-            } else if (!tool_validate($validate, $value)) {
+            } else if (!validate($validate, $value)) {
                 return false;
             }
         }
