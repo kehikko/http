@@ -1,5 +1,9 @@
 <?php
 
+/*
+ * API input handling
+ */
+
 function api_validate(array $cfg, $data)
 {
     if (!isset($cfg['api']) || !is_array($cfg['api'])) {
@@ -45,7 +49,7 @@ function api_validate_node(string $name, array $node, $data, array $path, $mode,
     /* check data existence and requirement */
     if (!is_array($data) || !array_key_exists($name, $data)) {
         if (api_node_required($node, $mode)) {
-            http_e400('Required value missing, key: ' . implode($path, ':'));
+            http_e400('Required api value missing, key: ' . implode($path, ':'));
         }
         return false;
     }
@@ -66,7 +70,7 @@ function api_validate_node(string $name, array $node, $data, array $path, $mode,
 
     /* validate data */
     $value = $data[$name];
-    if (!tool_validate($node['type'], $value, true, $extra)) {
+    if (!validate($node['type'], $value, true, $extra)) {
         http_e400('Invalid value for key: ' . implode($path, ':'));
     }
     /* create args for possible calls */
@@ -124,21 +128,55 @@ function api_node_required(array $node, $mode)
     return true;
 }
 
-function api_node_read(string $name, array $node, &$item, &$data, array $path)
+/*
+ * API output handling
+ */
+
+function api_read(array $cfg, $data)
 {
-    $value = null;
-    if (is_array($item)) {
-        array_pop($path);
-        $from = $item;
-        foreach ($path as $p) {
-            if (!isset($from[$p]) || !is_array($from[$p])) {
-                http_e500('Internal error, trying to read missing value from array, stopped at: ' . $p . ', full key: ' . implode($path, ':'));
-            }
-            $from = $from[$p];
-        }
-        $value = $from[$name];
-    } else {
-        http_e501('Not implemented');
+    if (!isset($cfg['api']) || !is_array($cfg['api'])) {
+        http_e500('Invalid api read request, api description is missing for given route');
     }
-    $data[$name] = $value;
+
+    $mode = null;
+    if (!http_using_method(['get'])) {
+        http_e500('Invalid api read request, http method used: ' . http_method() . ', should be: get');
+    }
+
+    return api_read_nodes($cfg['api'], $data, []);
+}
+
+function api_read_nodes(array $nodes, $data, array $path)
+{
+    $return_data = [];
+    foreach ($nodes as $name => $node) {
+        array_push($path, $name);
+        if (!is_array($node)) {
+            log_error('Invalid api description, key: {0}, type: {1}, type should be array', [implode($path, ':'), gettype($node)]);
+        } else if (isset($node['type']) && is_string($node['type'])) {
+            api_read_node($name, $node, $data, $path);
+        } else if (!isset($data[$name]) || !is_array($data[$name])) {
+            api_read_nodes($node, null, $path);
+        } else {
+            $value = api_read_nodes($node, $data[$name], $path);
+            if (!empty($value)) {
+                $return_data[$name] = $value;
+            }
+        }
+        array_pop($path);
+    }
+    return $return_data;
+}
+
+function api_read_node(string $name, array $node, $data, array $path)
+{
+    /* check data existence and requirement */
+    if (!is_array($data) || !array_key_exists($name, $data)) {
+        http_e400('Required api value missing, key: ' . implode($path, ':'));
+    }
+    /* get data */
+    $value = $data[$name];
+    if (!validate($node['type'], $value, true, $extra)) {
+        http_e400('Invalid value for key: ' . implode($path, ':'));
+    }
 }
