@@ -44,48 +44,65 @@ function route_execute()
         $route['format'] = 'html';
     }
 
-    /* resolve where to get data */
-    if (isset($route['call']) && is_string($route['call'])) {
-        try {
+    try {
+        /* validate incoming data if this is api request */
+        if (isset($route['_api']) && $route['_api'] === true && http_using_method(['post', 'put', 'patch'])) {
+            $content = api_validate($route, http_request_payload_json(), $route['args']);
+        }
+
+        /* resolve where to get data */
+        if (isset($route['call']) && is_string($route['call'])) {
             $content = tool_call($route);
-        } catch (Throwable $e) {
-            $code = $e->getCode();
-            /* if return code is outside http codes, this is an internal error */
-            if ($code < 100 || $code >= 600) {
-                $code = 500;
-                $msg  = cfg_debug() ? $e->getMessage() : 'Internal server error, see log for details.';
+        } else if (isset($route['content'])) {
+            $content = $route['content'];
+        } else if (isset($route['redirect']) && is_string($route['redirect'])) {
+            if (strpos($route['redirect'], 'http://') === 0 || strpos($route['redirect'], 'https://') === 0) {
+                http_response_code($code >= 300 && $code < 400 ? $code : 302);
+                header('Location: ' . $route['redirect']);
+                return true;
             } else {
-                /* message should be already formatted so that it can be shown to user */
-                $msg = $e->getMessage();
+                $code    = 501;
+                $success = false;
+                $msg     = 'Internal redirect not implemented';
             }
-            $success = false;
-            if (cfg_debug()) {
-                foreach ($e->getTrace() as $n => $t) {
-                    $trace[] = array(
-                        'file' => isset($t['file']) ? $t['file'] : false,
-                        'line' => isset($t['line']) ? $t['line'] : false,
-                    );
-                }
-            }
-            /* write all internal errors to log */
-            log_if_error($code >= 500, '{file}:{line}: route_execute() failed when calling {call}, request uri: "{uri}", error: {msg}', ['call' => $route['call'], 'file' => $e->getFile(), 'line' => $e->getLine(), 'msg' => $e->getMessage(), 'uri' => $_SERVER['REQUEST_URI']]);
-        }
-    } else if (isset($route['content'])) {
-        $content = $route['content'];
-    } else if (isset($route['redirect']) && is_string($route['redirect'])) {
-        if (strpos($route['redirect'], 'http://') === 0 || strpos($route['redirect'], 'https://') === 0) {
-            http_response_code($code >= 300 && $code < 400 ? $code : 302);
-            header('Location: ' . $route['redirect']);
-            return true;
         } else {
-            $code    = 501;
+            $code    = 404;
             $success = false;
-            $msg     = 'Internal redirect not implemented';
+            $msg     = 'Not found.';
         }
-    } else {
-        $code    = 404;
+
+        /* do api write/read operations */
+        if (isset($route['_api']) && $route['_api'] === true) {
+            /* write data */
+            if (http_using_method(['post', 'put', 'patch'])) {
+                api_write($route, $content, $route['args']);
+            }
+            /* outgoing api data check */
+            $content = api_read($route, $content, $route['args']);
+            $code    = 200;
+            $success = true;
+        }
+    } catch (Throwable $e) {
+        $code = $e->getCode();
+        /* if return code is outside http codes, this is an internal error */
+        if ($code < 100 || $code >= 600) {
+            $code = 500;
+            $msg  = cfg_debug() ? $e->getMessage() : 'Internal server error, see log for details.';
+        } else {
+            /* message should be already formatted so that it can be shown to user */
+            $msg = $e->getMessage();
+        }
         $success = false;
-        $msg     = 'Not found.';
+        if (cfg_debug()) {
+            foreach ($e->getTrace() as $n => $t) {
+                $trace[] = array(
+                    'file' => isset($t['file']) ? $t['file'] : false,
+                    'line' => isset($t['line']) ? $t['line'] : false,
+                );
+            }
+        }
+        /* write all internal errors to log */
+        log_if_error($code >= 500, '{file}:{line}: route_execute() failed, request uri: "{uri}", error: {msg}', ['file' => $e->getFile(), 'line' => $e->getLine(), 'msg' => $e->getMessage(), 'uri' => $_SERVER['REQUEST_URI']]);
     }
 
     /* modify content */
@@ -184,7 +201,7 @@ function route_load(string $route_file)
         $data = array_merge($data, $data_api);
     }
 
-    /* reverse whole array, we want it this way */
+    /* reverse whole array, we want it this way for routes to match in the correct order */
     $data = array_reverse($data);
 
     return $data;
@@ -216,7 +233,7 @@ function route_find($routes, $path, $final)
         /* this was a match, check what kind of match */
         $route = array_replace_recursive($route, $values);
         if ($route['_final']) {
-            if (isset($route['redirect']) || isset($route['call']) || isset($route['content'])) {
+            if (isset($route['redirect']) || isset($route['call']) || isset($route['content']) || isset($route['api'])) {
                 return $route;
             }
         } else if (!$final) {
@@ -295,7 +312,7 @@ function route_match($pattern, $path)
                     $values['args'][] = implode(array_slice($path, $i), '/');
                 }
                 return $values;
-            } else if (!tool_validate($validate, $value)) {
+            } else if (!validate($validate, $value)) {
                 return false;
             }
         }
