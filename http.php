@@ -14,12 +14,23 @@ function http_using_method(array $methods)
     return in_array(http_method(), $methods) ? true : false;
 }
 
+/**
+ * Return request payload if given.
+ * 
+ * @return mixed Request payload or null if none received.
+ */
 function http_request_payload()
 {
     if (!http_using_method(['put', 'post', 'patch'])) {
         log_notice('Reading request payload when http method does not include such, method used: ' . http_method());
     }
-    $data = file_get_contents('php://input');
+    if (tool_is_http_request()) {
+        /* read payload from stdin when in http mode */
+        $data = file_get_contents('php://input');
+    } else {
+        /* use payload from global variable when in terminal, mostly used for testing purposes */
+        $data = isset($GLOBALS['__kehikko_term_payload__']) ? $GLOBALS['__kehikko_term_payload__'] : false;
+    }
     return $data !== false ? $data : null;
 }
 

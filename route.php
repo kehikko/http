@@ -336,6 +336,15 @@ function route_test_request_cmd($cmd, $args, $options)
 {
     $_SERVER['REQUEST_METHOD'] = strtoupper($args['method']);
     $_SERVER['REQUEST_URI']    = $args['url'];
+    if ($args['payload']) {
+        $GLOBALS['__kehikko_term_payload__'] = $args['payload'];
+    } else if ($options['file']) {
+        $GLOBALS['__kehikko_term_payload__'] = @file_get_contents($options['file']);
+        if ($GLOBALS['__kehikko_term_payload__'] === false) {
+            log_error('Unable to read request payload from file {0}', [$options['file']]);
+            return false;
+        }
+    }
     route_execute();
     return true;
 }

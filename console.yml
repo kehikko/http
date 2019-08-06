@@ -7,4 +7,12 @@ commands:
         description: request method, example GET, OPTIONS or DELETE, can be any string really, converted to uppercase and set to $_SERVER['REQUEST_METHOD']
       url:
         description: "query only, example /login?x=1, set to $_SERVER['REQUEST_URI']"
-          
+      payload:
+        optional: true
+        description: Request payload as an optional string
+    options:
+      file:
+        short_name: -f
+        long_name: --payload
+        default: null
+        description: Read request payload from given file
