@@ -307,9 +307,9 @@ function route_match($pattern, $path)
                 }
             } else if ($validate === 'rest') {
                 if ($name !== null) {
-                    $values['args'][$name] = implode(array_slice($path, $i), '/');
+                    $values['args'][$name] = implode('/', array_slice($path, $i));
                 } else {
-                    $values['args'][] = implode(array_slice($path, $i), '/');
+                    $values['args'][] = implode('/', array_slice($path, $i));
                 }
                 return $values;
             } else if (!validate($validate, $value)) {
