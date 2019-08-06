@@ -167,7 +167,7 @@ function route_init(string $route_file = null)
     }
     $routes = ['base' => $routes_base, 'sub' => []];
 
-    $route_files = tool_system_find_files(['route.yml'], [cfg(['path', 'routes']), cfg(['path', 'modules']), cfg(['path', 'vendor'])]);
+    $route_files = tool_system_find_files(['route.yml'], [cfg(['path', 'routes']), cfg(['path', 'models']), cfg(['path', 'vendor'])]);
     foreach ($route_files as $file) {
         $content = route_load($file);
         if (!empty($content)) {
