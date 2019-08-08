@@ -201,6 +201,39 @@ function route_load(string $route_file)
         $data = array_merge($data, $data_api);
     }
 
+    /* auto-expand strings: expansion result can be other than string if only singular value is pointed at and it is not a string */
+    $expand = function (&$c) use (&$expand) {
+        if (is_array($c)) {
+            foreach ($c as &$subc) {
+                $expand($subc);
+            }
+        } else if (is_string($c)) {
+            /* do auto-expansion at most five(5) times */
+            for ($i = 0; $i < 5 && preg_match_all('/{[a-zA-Z0-9.\\\\]+}/', $c, $matches, PREG_OFFSET_CAPTURE) > 0; $i++) {
+                $replaced = 0;
+                $parts    = [];
+                $left     = 0;
+                foreach ($matches[0] as $match) {
+                    $key     = trim($match[0], '{}');
+                    $parts[] = substr($c, $left, $match[1] - $left);
+                    $parts[] = cfg($key, $match[0]);
+                    $left    = $match[1] + strlen($match[0]);
+                    $replaced++;
+                }
+                $left = substr($c, $left);
+                if ($replaced == 1 && $left == '' && $parts[0] == '' && !is_string($parts[1])) {
+                    /* only singlular replacement and it pointed to non-string value, set directly */
+                    $c = $parts[1];
+                    break;
+                } else {
+                    /* string value replacement */
+                    $c = implode('', $parts) . $left;
+                }
+            }
+        }
+    };
+    $expand($data);
+
     /* reverse whole array, we want it this way for routes to match in the correct order */
     $data = array_reverse($data);
 
@@ -260,7 +293,7 @@ function route_match($pattern, $path)
         $static   = true;
         $optional = false;
         $name     = null;
-        if (substr($part, 0, 1) === '{' && substr($part, -1) === '}') {
+        if (substr($part, 0, 1) === '%' && substr($part, -1) === '%') {
             $part     = substr($part, 1, -1);
             $static   = false;
             $subparts = explode('|', $part, 2);
