@@ -24,7 +24,9 @@ function route_render(string $uri = null)
 
 function route_execute(string $uri = null)
 {
-    /** @todo rewrite and divide this horrible function into smaller pieces */
+    /**
+     * @todo rewrite and divide this horrible function into smaller pieces
+     */
 
     $code    = 200;
     $content = null;
@@ -181,14 +183,6 @@ function route_init(string $route_file = null)
     }
     $routes = ['base' => $routes_base, 'sub' => []];
 
-    $route_files = tool_system_find_files(['route.yml'], [cfg(['path', 'routes']), cfg(['path', 'models']), cfg(['path', 'vendor'])]);
-    foreach ($route_files as $file) {
-        $content = route_load($file);
-        if (!empty($content)) {
-            $routes['sub'][basename(dirname($file))] = $content;
-        }
-    }
-
     return $routes;
 }
 
@@ -284,13 +278,14 @@ function route_find($routes, $path, $final)
                 return $route;
             }
         } else if (!$final) {
-            $subr = route_init();
-            if (isset($subr['sub'][$name])) {
-                $route = route_find($subr['sub'][$name], $route['_path'], true);
-                if (!empty($route)) {
-                    return $route;
-                }
-            }
+            throw new Exception('not yet');
+            // $subr = route_init();
+            // if (isset($subr['sub'][$name])) {
+            //     $route = route_find($subr['sub'][$name], $route['_path'], true);
+            //     if (!empty($route)) {
+            //         return $route;
+            //     }
+            // }
         }
     }
 
@@ -303,6 +298,12 @@ function route_match($pattern, $path)
     $values         = ['args' => [], '_final' => true];
     $after_optional = false;
 
+    /* special case of index */
+    if (empty($pattern) && !empty($path)) {
+        return false;
+    }
+
+    /* now loop through all parts in pattern and check them against path */
     foreach ($pattern as $i => $part) {
         $static   = true;
         $optional = false;
