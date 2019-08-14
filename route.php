@@ -278,7 +278,7 @@ function route_find($routes, $path, $final)
                 return $route;
             }
         } else if (!$final) {
-            throw new Exception('not yet');
+            // throw new Exception('not yet');
             // $subr = route_init();
             // if (isset($subr['sub'][$name])) {
             //     $route = route_find($subr['sub'][$name], $route['_path'], true);
@@ -297,11 +297,6 @@ function route_match($pattern, $path)
     $i              = -1;
     $values         = ['args' => [], '_final' => true];
     $after_optional = false;
-
-    /* special case of index */
-    if (empty($pattern) && !empty($path)) {
-        return false;
-    }
 
     /* now loop through all parts in pattern and check them against path */
     foreach ($pattern as $i => $part) {
