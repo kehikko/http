@@ -1,0 +1,15 @@
+
+index:
+  pattern: /
+  content: Index
+
+item10:
+  pattern: /item/%int%
+  content: Item 10
+
+item_json:
+  pattern: /item/json/%id=int%
+  api:
+    id:
+      type: int
+      get: return(id)

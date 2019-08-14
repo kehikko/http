@@ -1,0 +1,16 @@
+
+log:
+  console:
+    enabled: false
+  file:
+    enabled: false
+  syslog:
+    enabled: false
+
+path:
+  models: '.'
+  cache: '.'
+  data: '.'
+  tmp: '.'
+  log: '.'
+  vendor: '.'

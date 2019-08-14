@@ -1,29 +1,34 @@
 <?php
 
-function route()
+function route(string $uri = null)
 {
+    if ($uri === null) {
+        $uri = $_SERVER['REQUEST_URI'];
+    }
     $routes = route_init();
-    $path   = explode('/', trim(parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH), '/'));
+    $path   = explode('/', trim(parse_url($uri, PHP_URL_PATH), '/'));
     if ($path[0] === '') {
         $path = [];
     }
     return route_find($routes['base'], $path, false);
 }
 
-function route_render()
+function route_render(string $uri = null)
 {
-    $route = route();
-    if (isset($route['call'])) {
-        return tool_call($route);
+    $route = route($uri);
+    if (!empty($route)) {
+        return route_get_content($route);
     }
-    return false;
+    return null;
 }
 
-function route_execute()
+function route_execute(string $uri = null)
 {
+    /** @todo rewrite and divide this horrible function into smaller pieces */
+
     $code    = 200;
     $content = null;
-    $route   = route();
+    $route   = route($uri);
     $success = true;
     $msg     = '';
     $trace   = [];
@@ -45,30 +50,28 @@ function route_execute()
     }
 
     try {
-        /* validate incoming data if this is api request */
         if (isset($route['_api']) && $route['_api'] === true && http_using_method(['post', 'put', 'patch'])) {
+            /* validate incoming data if this is api request */
             $content = api_validate($route, http_request_payload_json(), $route['args']);
-        }
-
-        /* resolve where to get data */
-        if (isset($route['call']) && is_string($route['call'])) {
-            $content = tool_call($route);
-        } else if (isset($route['content'])) {
-            $content = $route['content'];
-        } else if (isset($route['redirect']) && is_string($route['redirect'])) {
-            if (strpos($route['redirect'], 'http://') === 0 || strpos($route['redirect'], 'https://') === 0) {
-                http_response_code($code >= 300 && $code < 400 ? $code : 302);
-                header('Location: ' . $route['redirect']);
-                return true;
-            } else {
-                $code    = 501;
-                $success = false;
-                $msg     = 'Internal redirect not implemented';
-            }
         } else {
-            $code    = 404;
-            $success = false;
-            $msg     = 'Not found.';
+            $content = route_get_content($route);
+            if ($content !== null) {
+                /* we are fine, content was delivered */
+            } else if (isset($route['redirect']) && is_string($route['redirect'])) {
+                if (strpos($route['redirect'], 'http://') === 0 || strpos($route['redirect'], 'https://') === 0) {
+                    http_response_code($code >= 300 && $code < 400 ? $code : 302);
+                    header('Location: ' . $route['redirect']);
+                    return true;
+                } else {
+                    $code    = 501;
+                    $success = false;
+                    $msg     = 'Internal redirect not implemented';
+                }
+            } else {
+                $code    = 404;
+                $success = false;
+                $msg     = 'Not found.';
+            }
         }
 
         /* do api write/read operations */
@@ -147,6 +150,17 @@ function route_execute()
     } else {
         echo "\n" . $content . "\n";
     }
+}
+
+function route_get_content(array $route)
+{
+    /* resolve where to get data */
+    if (isset($route['call']) && is_string($route['call'])) {
+        return tool_call($route);
+    } else if (isset($route['content'])) {
+        return $route['content'];
+    }
+    return null;
 }
 
 function route_init(string $route_file = null)
