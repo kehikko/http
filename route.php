@@ -273,11 +273,12 @@ function route_find($routes, $path, $final)
 
         /* this was a match, check what kind of match */
         $route = array_replace_recursive($route, $values);
-        if ($route['_final']) {
+        if ($route['_final'] && !isset($route['route'])) {
             if (isset($route['redirect']) || isset($route['call']) || isset($route['content']) || isset($route['api'])) {
                 return $route;
             }
         } else if (!$final) {
+            var_dump($route);
             // throw new Exception('not yet');
             // $subr = route_init();
             // if (isset($subr['sub'][$name])) {
