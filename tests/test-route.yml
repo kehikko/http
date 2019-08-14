@@ -3,6 +3,10 @@ index:
   pattern: /
   content: Index
 
+other:
+  pattern: /other
+  content: Other
+
 item10:
   pattern: /item/%int%
   content: Item 10
