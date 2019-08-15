@@ -6,11 +6,11 @@ function route(string $uri = null)
         $uri = $_SERVER['REQUEST_URI'];
     }
     $routes = route_init();
-    $path   = explode('/', trim(parse_url($uri, PHP_URL_PATH), '/'));
-    if ($path[0] === '') {
-        $path = [];
+    $url_path   = explode('/', trim(parse_url($uri, PHP_URL_PATH), '/'));
+    if ($url_path[0] === '') {
+        $url_path = [];
     }
-    return route_find($routes['base'], $path, false);
+    return route_find($routes['base'], $url_path);
 }
 
 function route_render(string $uri = null)
@@ -245,10 +245,15 @@ function route_load(string $route_file)
     /* reverse whole array, we want it this way for routes to match in the correct order */
     $data = array_reverse($data);
 
+    /* add path */
+    foreach ($data as &$route) {
+        $route['_path'] = dirname($route_file);
+    }
+
     return $data;
 }
 
-function route_find($routes, $path, $final)
+function route_find($routes, $url_path)
 {
     foreach ($routes as $name => $route) {
         if (!isset($route['pattern'])) {
@@ -266,7 +271,7 @@ function route_find($routes, $path, $final)
             $pattern = [];
         }
 
-        $values = route_match($pattern, $path);
+        $values = route_match($pattern, $url_path);
         if (!$values) {
             continue;
         }
@@ -277,26 +282,28 @@ function route_find($routes, $path, $final)
             if (isset($route['redirect']) || isset($route['call']) || isset($route['content']) || isset($route['api'])) {
                 return $route;
             }
-        } else if (!$final) {
-            var_dump($route);
-            // throw new Exception('not yet');
-            // $subr = route_init();
-            // if (isset($subr['sub'][$name])) {
-            //     $route = route_find($subr['sub'][$name], $route['_path'], true);
-            //     if (!empty($route)) {
-            //         return $route;
-            //     }
-            // }
+        } else if (isset($route['route'])) {
+            /* if route is not absolute path, prepend it with root path */
+            $route_path = $route['route'];
+            if (substr($route_path, 0, 1) !== '/') {
+                $route_path = cfg(['path', 'root']) . $route['route'];
+            }
+            /* load and try to match subroute */
+            $subroutes = route_load($route_path . '/route.yml');
+            $subroute = route_find($subroutes, $route['_url_path']);
+            if (!empty($subroute)) {
+                return $subroute;
+            }
         }
     }
 
     return [];
 }
 
-function route_match($pattern, $path)
+function route_match($pattern, $url_path)
 {
     $i              = -1;
-    $values         = ['args' => [], '_final' => true];
+    $values         = ['args' => [], '_final' => true, '_url_path' => []];
     $after_optional = false;
 
     /* now loop through all parts in pattern and check them against path */
@@ -312,7 +319,7 @@ function route_match($pattern, $path)
                 $optional       = true;
                 $after_optional = true;
                 /* if path is missing for slug, use secondary option for it */
-                $part = isset($path[$i]) ? $subparts[0] : $subparts[1];
+                $part = isset($url_path[$i]) ? $subparts[0] : $subparts[1];
             }
             $part = explode('=', $part, 2);
             $name = empty($part[0]) ? null : $part[0];
@@ -320,13 +327,13 @@ function route_match($pattern, $path)
         }
 
         /* if not enough parts */
-        if (!$optional && !isset($path[$i])) {
+        if (!$optional && !isset($url_path[$i])) {
             return false;
         }
 
         /* check for static parts */
         if ($static && !$after_optional) {
-            if ($path[$i] !== $part) {
+            if ($url_path[$i] !== $part) {
                 return false;
             }
             continue;
@@ -334,7 +341,7 @@ function route_match($pattern, $path)
 
         /* more complex slug parsing */
         $validations = explode(',', $part);
-        $value       = isset($path[$i]) ? $path[$i] : null;
+        $value       = isset($url_path[$i]) ? $url_path[$i] : null;
         foreach ($validations as $validate) {
             if ($validate == '') {
                 /* empty string, not really and invalid thing, just skip */
@@ -351,9 +358,9 @@ function route_match($pattern, $path)
                 }
             } else if ($validate === 'rest') {
                 if ($name !== null) {
-                    $values['args'][$name] = implode('/', array_slice($path, $i));
+                    $values['args'][$name] = implode('/', array_slice($url_path, $i));
                 } else {
-                    $values['args'][] = implode('/', array_slice($path, $i));
+                    $values['args'][] = implode('/', array_slice($url_path, $i));
                 }
                 return $values;
             } else if (!validate($validate, $value)) {
@@ -368,9 +375,9 @@ function route_match($pattern, $path)
         }
     }
 
-    if (($i + 1) < count($path)) {
+    if (($i + 1) < count($url_path)) {
         $values['_final'] = false;
-        $values['_path']  = array_slice($path, $i + 1);
+        $values['_url_path']  = array_slice($url_path, $i + 1);
     }
 
     return $values;
