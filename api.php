@@ -130,6 +130,13 @@ function api_read(array $cfg, $data, array $args = [])
     if (!isset($cfg['api']) || !is_array($cfg['api'])) {
         http_e500('Invalid api read request, api description is missing for given route');
     }
+    if (is_array($data) && !array_diff_key($data, array_keys(array_keys($data)))) {
+        $list = [];
+        foreach ($data as $item) {
+            $list[] = api_read_nodes($cfg['api'], $item, [], $args);
+        }
+        return $list;
+    }
     return api_read_nodes($cfg['api'], $data, [], $args);
 }
 

@@ -5,8 +5,8 @@ function route(string $uri = null)
     if ($uri === null) {
         $uri = $_SERVER['REQUEST_URI'];
     }
-    $routes = route_init();
-    $url_path   = explode('/', trim(parse_url($uri, PHP_URL_PATH), '/'));
+    $routes   = route_init();
+    $url_path = explode('/', trim(parse_url($uri, PHP_URL_PATH), '/'));
     if ($url_path[0] === '') {
         $url_path = [];
     }
@@ -290,7 +290,7 @@ function route_find($routes, $url_path)
             }
             /* load and try to match subroute */
             $subroutes = route_load($route_path . '/route.yml');
-            $subroute = route_find($subroutes, $route['_url_path']);
+            $subroute  = route_find($subroutes, $route['_url_path']);
             if (!empty($subroute)) {
                 return $subroute;
             }
@@ -376,8 +376,8 @@ function route_match($pattern, $url_path)
     }
 
     if (($i + 1) < count($url_path)) {
-        $values['_final'] = false;
-        $values['_url_path']  = array_slice($url_path, $i + 1);
+        $values['_final']    = false;
+        $values['_url_path'] = array_slice($url_path, $i + 1);
     }
 
     return $values;
