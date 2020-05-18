@@ -52,10 +52,17 @@ function route_execute(string $uri = null)
     }
 
     try {
-        if (isset($route['_api']) && $route['_api'] === true && http_using_method(['post', 'put', 'patch'])) {
-            /* validate incoming data if this is api request */
-            $content = api_validate($route, http_request_payload_json(), $route['args']);
+        if (isset($route['_api']) && $route['_api'] === true) {
+            /* api request */
+            if (http_using_method(['post', 'put', 'patch'])) {
+                /* validate incoming api data */
+                $data = api_validate($route, http_request_payload_json(), $route['args']);
+                api_write($route, $data, $route['args']);
+            }
+            /* outgoing api data parsing */
+            $content = api_read($route, $route['args']);
         } else {
+            /* ordinary http request */
             $content = route_get_content($route);
             if ($content !== null) {
                 /* we are fine, content was delivered */
@@ -74,18 +81,6 @@ function route_execute(string $uri = null)
                 $success = false;
                 $msg     = 'Not found.';
             }
-        }
-
-        /* do api write/read operations */
-        if (isset($route['_api']) && $route['_api'] === true) {
-            /* write data */
-            if (http_using_method(['post', 'put', 'patch'])) {
-                api_write($route, $content, $route['args']);
-            }
-            /* outgoing api data check */
-            $content = api_read($route, $content, $route['args']);
-            $code    = 200;
-            $success = true;
         }
     } catch (Throwable $e) {
         $code = $e->getCode();
@@ -271,15 +266,23 @@ function route_find($routes, $url_path)
             $pattern = [];
         }
 
-        $values = route_match($pattern, $url_path);
+        /* parse get args */
+        $get_args = route_parse_get($route);
+
+        /* try to match route */
+        $values = route_match($pattern, $url_path, $get_args);
         if (!$values) {
             continue;
         }
+        $values['args'] = array_merge($values['args'], $get_args);
 
         /* this was a match, check what kind of match */
         $route = array_replace_recursive($route, $values);
         if ($route['_final'] && !isset($route['route'])) {
             if (isset($route['redirect']) || isset($route['call']) || isset($route['content']) || isset($route['api'])) {
+                /* parse get parameters if any */
+                route_parse_get($route);
+                /* return route */
                 return $route;
             }
         } else if (isset($route['route'])) {
@@ -288,10 +291,14 @@ function route_find($routes, $url_path)
             if (substr($route_path, 0, 1) !== '/') {
                 $route_path = cfg(['path', 'root']) . $route['route'];
             }
+
             /* load and try to match subroute */
             $subroutes = route_load($route_path . '/route.yml');
             $subroute  = route_find($subroutes, $route['_url_path']);
             if (!empty($subroute)) {
+                /* parse get parameters if any */
+                route_parse_get($subroute);
+                /* return subroute */
                 return $subroute;
             }
         }
@@ -300,7 +307,7 @@ function route_find($routes, $url_path)
     return [];
 }
 
-function route_match($pattern, $url_path)
+function route_match($pattern, $url_path, $get_args)
 {
     $i              = -1;
     $values         = ['args' => [], '_final' => true, '_url_path' => []];
@@ -308,70 +315,65 @@ function route_match($pattern, $url_path)
 
     /* now loop through all parts in pattern and check them against path */
     foreach ($pattern as $i => $part) {
-        $static   = true;
-        $optional = false;
-        $name     = null;
         if (substr($part, 0, 1) === '%' && substr($part, -1) === '%') {
-            $part     = substr($part, 1, -1);
-            $static   = false;
-            $subparts = explode('|', $part, 2);
+            /* remove % characters from start and end */
+            $part = substr($part, 1, -1);
+
+            /* get variable name and optional filters/calls */
+            list($name, $filters) = array_pad(explode('=', $part, 2), 2, '');
+            if (empty($name)) {
+                http_e500('Variable name missing');
+            }
+
+            /* get filters/calls */
+            $optional = false;
+            $subparts = explode('|', $filters, 2);
             if (count($subparts) == 2) {
                 $optional       = true;
                 $after_optional = true;
                 /* if path is missing for slug, use secondary option for it */
-                $part = isset($url_path[$i]) ? $subparts[0] : $subparts[1];
+                $filters = isset($url_path[$i]) ? $subparts[0] : $subparts[1];
             }
-            $part = explode('=', $part, 2);
-            $name = empty($part[0]) ? null : $part[0];
-            $part = count($part) == 2 ? $part[1] : '';
-        }
 
-        /* if not enough parts */
-        if (!$optional && !isset($url_path[$i])) {
-            return false;
-        }
-
-        /* check for static parts */
-        if ($static && !$after_optional) {
-            if ($url_path[$i] !== $part) {
+            /* if not enough parts */
+            if (!$optional && !isset($url_path[$i])) {
                 return false;
             }
-            continue;
-        }
 
-        /* more complex slug parsing */
-        $validations = explode(',', $part);
-        $value       = isset($url_path[$i]) ? $url_path[$i] : null;
-        foreach ($validations as $validate) {
-            if ($validate == '') {
-                /* empty string, not really and invalid thing, just skip */
-                continue;
-            } else if (strpos($validate, 'call:') === 0) {
-                try {
-                    if ($value !== null) {
-                        $value = tool_call(['call' => substr($validate, 5)], [$value]);
-                    } else {
-                        $value = tool_call(['call' => substr($validate, 5)]);
+            /* more complex slug parsing */
+            $validations = explode(';', $filters);
+            $value       = isset($url_path[$i]) ? $url_path[$i] : null;
+            foreach ($validations as $validate) {
+                if ($validate == '') {
+                    /* empty string, not really an invalid thing, just skip */
+                    continue;
+                } else if (strpos($validate, 'call:') === 0) {
+                    try {
+                        if ($value !== null) {
+                            $value = tool_call(['call' => substr($validate, 5)], array_merge([$name => $value], $get_args));
+                        } else {
+                            $value = tool_call(['call' => substr($validate, 5)], $get_args);
+                        }
+                    } catch (Exception $e) {
+                        return false;
                     }
-                } catch (Exception $e) {
+                } else if ($validate === 'rest') {
+                    $values['args'][$name] = implode('/', array_slice($url_path, $i));
+                    return $values;
+                } else if (!validate($validate, $value)) {
                     return false;
                 }
-            } else if ($validate === 'rest') {
-                if ($name !== null) {
-                    $values['args'][$name] = implode('/', array_slice($url_path, $i));
-                } else {
-                    $values['args'][] = implode('/', array_slice($url_path, $i));
-                }
-                return $values;
-            } else if (!validate($validate, $value)) {
-                return false;
             }
-        }
 
-        if ($name !== null) {
             $values['args'][$name] = $value;
         } else {
-            $values['args'][] = $value;
+            /* check for static parts */
+            if ($after_optional && !isset($url_path[$i])) {
+                /* do nothing, static part not present after optional */
+            } else if (!isset($url_path[$i]) || $url_path[$i] !== $part) {
+                /* static part does not match */
+                return false;
+            }
         }
     }
 
@@ -381,6 +383,53 @@ function route_match($pattern, $url_path)
     }
 
     return $values;
+}
+
+function route_parse_get($route)
+{
+    /* check if there are any GET definitions */
+    $gets = explode('&', parse_url($route['pattern'], PHP_URL_QUERY));
+    if (empty($gets[0])) {
+        /* no GET parameters defined */
+        return [];
+    }
+
+    /* loop through and check each */
+    $args = [];
+    foreach ($gets as $get) {
+        list($name, $filters) = array_pad(explode('=', $get, 2), 2, null);
+        if (empty($name)) {
+            continue;
+        }
+        $args[$name] = null;
+        if (!isset($_GET[$name])) {
+            continue;
+        }
+
+        $validations = explode(',', $filters);
+        $value       = $_GET[$name];
+        $valid       = true;
+        foreach ($validations as $validate) {
+            if ($validate == '') {
+                /* empty string, not really an invalid thing, just skip */
+                continue;
+            } else if (strpos($validate, 'call:') === 0) {
+                try {
+                    $value = tool_call(['call' => substr($validate, 5)], [$value]);
+                } catch (Exception $e) {
+                    $valid = false;
+                    break;
+                }
+            } else if (!validate($validate, $value)) {
+                $valid = false;
+                break;
+            }
+        }
+
+        $args[$name] = $valid ? $value : null;
+    }
+
+    return $args;
 }
 
 function route_test_request_cmd($cmd, $args, $options)

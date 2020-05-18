@@ -1,7 +1,7 @@
 <?php
 
 /*
- * Divided into section: input validation, input write, output validation
+ * Divided into sections: input validation, input write, output validation
  */
 
 /*
@@ -10,7 +10,7 @@
 
 function api_validate(array $cfg, $data, array $args = [])
 {
-    if (!isset($cfg['api']) || !is_array($cfg['api'])) {
+    if (!isset($cfg['api']['fields']) || !is_array($cfg['api']['fields'])) {
         http_e500('Invalid api validate request, api description is missing for given route');
     }
 
@@ -23,7 +23,7 @@ function api_validate(array $cfg, $data, array $args = [])
         http_e500('Invalid api validate request, http method used: ' . http_method() . ', should be one of: post, put, patch');
     }
 
-    return api_validate_nodes($cfg['api'], $data, [], $mode);
+    return api_validate_nodes($cfg['api']['fields'], $data, [], $mode);
 }
 
 function api_validate_nodes(array $nodes, $data, array $path, $mode)
@@ -74,7 +74,7 @@ function api_validate_node(string $name, array $node, $data, array $path, $mode,
 
 function api_write(array $cfg, $data, array $args = [])
 {
-    if (!isset($cfg['api']) || !is_array($cfg['api'])) {
+    if (!isset($cfg['api']['fields']) || !is_array($cfg['api']['fields'])) {
         http_e500('Invalid api write request, api description is missing for given route');
     }
 
@@ -87,7 +87,7 @@ function api_write(array $cfg, $data, array $args = [])
         http_e500('Invalid api write request, http method used: ' . http_method() . ', should be one of: post, put, patch');
     }
 
-    return api_write_nodes($cfg['api'], $data, [], $mode, $args);
+    return api_write_nodes($cfg['api']['fields'], $data, [], $mode, $args);
 }
 
 function api_write_nodes(array $nodes, $data, array $path, $mode, array $args)
@@ -125,19 +125,31 @@ function api_write_node(string $name, array $node, $data, array $path, array $ar
  * API output validation
  */
 
-function api_read(array $cfg, $data, array $args = [])
+function api_read(array $cfg, array $args = [])
 {
-    if (!isset($cfg['api']) || !is_array($cfg['api'])) {
+    /* check that at least fields have been defined */
+    if (!isset($cfg['api']['fields']) || !is_array($cfg['api']['fields'])) {
         http_e500('Invalid api read request, api description is missing for given route');
     }
-    if (is_array($data) && !array_diff_key($data, array_keys(array_keys($data)))) {
-        $list = [];
-        foreach ($data as $item) {
-            $list[] = api_read_nodes($cfg['api'], $item, [], $args);
+
+    /* if loop variable is defined, check that if it exists in args and is an array */
+    $loop_var = isset($cfg['api']['loop']) && is_string($cfg['api']['loop']) ? $cfg['api']['loop'] : null;
+    if ($loop_var && isset($args[$loop_var]) && is_array($args[$loop_var])) {
+        /* furthermore check that loop variable is an indexed array and then loop if it is */
+        if (empty(array_diff_key($args[$loop_var], array_keys(array_keys($args[$loop_var]))))) {
+            $list = [];
+            $loop = $args[$loop_var];
+            foreach ($loop as $item) {
+                $args[$loop_var] = $item;
+                $list[] = api_read_nodes($cfg['api']['fields'], null, [], $args);
+            }
+            $args[$loop_var] = $loop;
+            return $list;
         }
-        return $list;
     }
-    return api_read_nodes($cfg['api'], $data, [], $args);
+
+    /* single item reading */
+    return api_read_nodes($cfg['api']['fields'], null, [], $args);
 }
 
 function api_read_nodes(array $nodes, $data, array $path, array $args)
