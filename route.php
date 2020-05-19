@@ -270,7 +270,7 @@ function route_find($routes, $url_path)
         $get_args = route_parse_get($route);
 
         /* try to match route */
-        $values = route_match($pattern, $url_path, $get_args);
+        $values = route_match($route, $pattern, $url_path, $get_args);
         if (!$values) {
             continue;
         }
@@ -280,8 +280,6 @@ function route_find($routes, $url_path)
         $route = array_replace_recursive($route, $values);
         if ($route['_final'] && !isset($route['route'])) {
             if (isset($route['redirect']) || isset($route['call']) || isset($route['content']) || isset($route['api'])) {
-                /* parse get parameters if any */
-                route_parse_get($route);
                 /* return route */
                 return $route;
             }
@@ -296,8 +294,6 @@ function route_find($routes, $url_path)
             $subroutes = route_load($route_path . '/route.yml');
             $subroute  = route_find($subroutes, $route['_url_path']);
             if (!empty($subroute)) {
-                /* parse get parameters if any */
-                route_parse_get($subroute);
                 /* return subroute */
                 return $subroute;
             }
@@ -307,7 +303,7 @@ function route_find($routes, $url_path)
     return [];
 }
 
-function route_match($pattern, $url_path, $get_args)
+function route_match($route, $pattern, $url_path, $get_args)
 {
     $i              = -1;
     $values         = ['args' => [], '_final' => true, '_url_path' => []];
@@ -320,7 +316,7 @@ function route_match($pattern, $url_path, $get_args)
             $part = substr($part, 1, -1);
 
             /* get variable name and optional filters/calls */
-            list($name, $filters) = array_pad(explode('=', $part, 2), 2, '');
+            list($name, $filters) = route_parse_var($route, $part);
             if (empty($name)) {
                 http_e500('Variable name missing');
             }
@@ -397,7 +393,7 @@ function route_parse_get($route)
     /* loop through and check each */
     $args = [];
     foreach ($gets as $get) {
-        list($name, $filters) = array_pad(explode('=', $get, 2), 2, null);
+        list($name, $filters) = route_parse_var($route, $get);
         if (empty($name)) {
             continue;
         }
@@ -406,7 +402,7 @@ function route_parse_get($route)
             continue;
         }
 
-        $validations = explode(',', $filters);
+        $validations = explode(';', $filters);
         $value       = $_GET[$name];
         $valid       = true;
         foreach ($validations as $validate) {
@@ -430,6 +426,53 @@ function route_parse_get($route)
     }
 
     return $args;
+}
+
+function route_parse_var($route, $var)
+{
+    /* parse name and get filters after it if any */
+    list($name, $filters) = array_pad(explode('=', $var, 2), 2, '');
+    if (empty($name)) {
+        log_error('Route definition is missing variable name, pattern: {0}', [$route['pattern']]);
+        return [null, null];
+    }
+
+    /* if route has no separate filter definitions for this variable (they override any defined after variable) */
+    if (!isset($route['filters'][$name])) {
+        return [$name, $filters];
+    }
+
+    /* if defined as string */
+    if (is_string($route['filters'][$name])) {
+        return [$name, $route['filters'][$name]];
+    }
+
+    /* more complex filter definition */
+    $filters = '';
+
+    /* if defined with non-optional and optional parts separate */
+    if (isset($route['filters'][$name]['defined'])) {
+        if (is_string($route['filters'][$name]['defined'])) {
+            $filters .= $route['filters'][$name]['defined'];
+        } else if (is_array($route['filters'][$name]['defined'])) {
+            $filters .= implode($route['filters'][$name]['defined'], ';');
+        }
+    }
+    if (isset($route['filters'][$name]['undefined'])) {
+        if (is_string($route['filters'][$name]['undefined'])) {
+            $filters .= '|' . $route['filters'][$name]['undefined'];
+        } else if (is_array($route['filters'][$name]['undefined'])) {
+            $filters .= '|' . implode($route['filters'][$name]['undefined'], ';');
+        }
+    }
+
+    if (!empty($filters)) {
+        return [$name, $filters];
+    }
+
+    /* invalid definition */
+    log_error('Route variable has invalid filters section, variable: {0}, pattern: {1}', [$var, $route['pattern']]);
+    return [null, null];
 }
 
 function route_test_request_cmd($cmd, $args, $options)
