@@ -141,7 +141,7 @@ function api_read(array $cfg, array $args = [])
             $loop = $args[$loop_var];
             foreach ($loop as $item) {
                 $args[$loop_var] = $item;
-                $list[] = api_read_nodes($cfg['api']['fields'], null, [], $args);
+                $list[] = api_read_nodes($cfg['api']['fields'], null, [], $args, $loop_var);
             }
             $args[$loop_var] = $loop;
             return $list;
@@ -152,7 +152,7 @@ function api_read(array $cfg, array $args = [])
     return api_read_nodes($cfg['api']['fields'], null, [], $args);
 }
 
-function api_read_nodes(array $nodes, $data, array $path, array $args)
+function api_read_nodes(array $nodes, $data, array $path, array $args, string $loop_var = null)
 {
     $return_data = [];
     foreach ($nodes as $name => $node) {
@@ -160,7 +160,7 @@ function api_read_nodes(array $nodes, $data, array $path, array $args)
         if (!is_array($node)) {
             log_error('Invalid api description, key: {0}, type: {1}, type should be array', [implode('.', $path), gettype($node)]);
         } else if (isset($node['type']) && is_string($node['type'])) {
-            $return_data[$name] = api_read_node($name, $node, $data, $path, $args);
+            $return_data[$name] = api_read_node($name, $node, $data, $path, $args, $loop_var);
         } else if (!isset($data[$name]) || !is_array($data[$name])) {
             api_read_nodes($node, null, $path, $args);
         } else {
@@ -174,8 +174,14 @@ function api_read_nodes(array $nodes, $data, array $path, array $args)
     return $return_data;
 }
 
-function api_read_node(string $name, array $node, $data, array $path, array $args)
-{
+function api_read_node(
+    string $name,
+    array $node,
+    $data,
+    array $path,
+    array $args,
+    string $loop_var
+) {
     /* retrieve data */
     $value = null;
     if (isset($node['get'])) {
@@ -187,6 +193,14 @@ function api_read_node(string $name, array $node, $data, array $path, array $arg
             log_error('Invalid api node description, "get" must define a call, debug identifier: {0}', [implode('.', $path)]);
             throw new Exception('Failed calling dynamic function, see log for details');
         }
+    } else if (is_string($loop_var) && is_object($args[$loop_var])) {
+        $method_name = 'get' . ucfirst($name);
+        if (method_exists($args[$loop_var], $method_name)) {
+            return $args[$loop_var]->{$method_name}();
+        } else if (property_exists($args[$loop_var], $name)) {
+            return $args[$loop_var]->{$name};
+        }
+        http_e400('Required api value missing, key: ' . implode('.', $path));
     } else if (!is_array($data) || !array_key_exists($name, $data)) {
         if (api_node_required($node, 'r', implode('.', $path))) {
             http_e400('Required api value missing, key: ' . implode('.', $path));
